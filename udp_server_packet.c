@@ -101,8 +101,8 @@ int main (int argc, char * argv[] )
             /* printf("Obtained first packet\n");
              sender_packet.time= time(&receive_time);
              sender_packet.sequence_number == 1;
-             strcpy(sender_packet.data, receive_packet.data);
-             sendto(sockfd, &receive_packet, sizeof(receive_packet), 0, (struct sockaddr *)&remote, remote_length);*/ //send the packet
+             strcpy(sender_packet.data, receive_packet.data);*/
+             sendto(sockfd, &receive_packet, sizeof(receive_packet), 0, (struct sockaddr *)&remote, remote_length); //send the packet
              write(fd, receive_packet.data, sizeof(receive_packet.data));
              bzero(receive_packet.data, sizeof(receive_packet.data));
       //       bzero(buffer, MAXBUFSIZE);

@@ -82,9 +82,10 @@ int main (int argc, char * argv[])
 	  it will report an error if the message fails to leave the computer
 	  however, with UDP, there is no error if the message is lost in the network once it leaves the computer.
 	 ******************/
+  int seq_number_count = 1;
   while(nbytes = read(fd, sender_packet.data, MAXBUFSIZE)) 
   {
-      sender_packet.sequence_number = 1; // pack all the required data into one packet
+      sender_packet.sequence_number = seq_number_count; // pack all the required data into one packet
 //      strcpy(sender_packet.data , buffer);
       sender_packet.time = time(&send_time);
       if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1); //send the packet
@@ -96,14 +97,17 @@ int main (int argc, char * argv[])
     //  printf("client says :%s", sender_packet.data);
       bzero(sender_packet.data, nbytes);
       bzero(buffer, nbytes);
-   //   recvfrom(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, &remote_length);
-     // printf("sequence number is %d\n", receiver_packet.sequence_number);
-//      time(&receive_time);
-  //    if(receiver_packet.sequence_number == 1)
-    //  {
-      //   printf("1st Packet Ack Obtained");
-        // printf(" RTT is %f\n", difftime(receive_time, send_time));
-     // }
+
+       recvfrom(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, &remote_length);
+       printf("sequence number is %d\n", receiver_packet.sequence_number);
+       time(&receive_time);
+      if(receiver_packet.sequence_number == seq_number_count)
+      {
+         printf(" %d Packet Ack Obtained",seq_number_count);
+         printf(" RTT is %f\n", difftime(receive_time, send_time));
+      }
+
+      seq_number_count++;
 } 
               
 	/*char command[] = "apple";	

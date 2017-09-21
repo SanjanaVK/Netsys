@@ -124,10 +124,68 @@ int main (int argc, char * argv[] )
            
           if(strcmp(receive_packet.command, "get") == 0)
           {
-          }
+               int fd, nbytes;
+               time_t send_time, receive_time;
+               char buffer[MAXBUFSIZE];
+               fd = open(receive_packet.filename , O_RDONLY); //file open with read only option
+               if(fd == -1)
+               {
+                   perror("File not opened: ");
+                   exit(-1);
+               }
+               char command[] = "End of File";
+	       /******************
+	       sendto() sends immediately.  
+	         it will report an error if the message fails to leave the computer
+	          however, with UDP, there is no error if the message is lost in the network once it leaves the computer.
+	              ******************/
+               int seq_number_count = 1;
+               while(nbytes = read(fd, sender_packet.data, MAXBUFSIZE)) 
+               {
+                   sender_packet.sequence_number = seq_number_count; // pack all the required data into one packet
+                    //      strcpy(sender_packet.data , buffer) ;
+                   sender_packet.time = time(&send_time);
+                   sender_packet.datasize = nbytes;
+                   if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
+                   {
 
-        
+                       perror("talker:sendto");
+                       // continue;
+                   }
+                   printf("Sent packet to the client with datasize %d\n",sender_packet.datasize);
+                   bzero(sender_packet.data, nbytes);
+                   bzero(buffer, nbytes);
+
+                   recvfrom(sockfd, &receive_packet, sizeof(receive_packet), 0, (struct sockaddr *)&remote, &remote_length);
+                   printf("sequence number is %d\n", receive_packet.sequence_number);
+                   time(&receive_time);
+                   if(receive_packet.sequence_number == seq_number_count)
+                   {
+                       printf(" %d Packet Ack Obtained",seq_number_count);
+                       printf(" RTT is %f\n", difftime(receive_time, send_time));
+                   }
+
+                   seq_number_count++;
+               } 
+              
+               strcpy(sender_packet.data, command);
+
+               sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length);
+               bzero(sender_packet.data, sizeof(sender_packet));
+               bzero(receive_packet.data, sizeof(receive_packet));
+               exit(-1);
+        	// Blocks till bytes are received
+	       /*struct sockaddr_in from_addr;
+	        int addr_length = sizeof(struct sockaddr);
+	         bzero(buffer,sizeof(buffer));
+           	nbytes = recvfrom(sockfd,buffer,100,0,  (struct sockaddr *)&remote, &addr_length);
+    
+
+	        printf("Server says %s\n", buffer);*/
+          }
 }
+        
+
 
 
 	/*printf("The client says %s\n", buffer);

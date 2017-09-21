@@ -18,6 +18,8 @@
 #define MAXBUFSIZE 5*1024
 
 void put_file(struct sockaddr_in remote, int remote_length, int sockfd);
+void get_file(struct sockaddr_in remote, int remote_length, int sockfd);
+
 
 /* You will have to modify the program below */
 
@@ -113,10 +115,12 @@ int main (int argc, char * argv[])
        printf("Command: %s\n", sender_packet.command);
        printf("before put");
 
-       if (sender_packet.command == "get")
+       if (strcmp(sender_packet.command , "get") == 0)
        {
            printf("Filename is %s\n", sender_packet.filename);
            sender_packet.valid = 1;
+           get_file(remote, remote_length, sockfd);
+
        }
        else if (strcmp(sender_packet.command , "put") == 0)
        {
@@ -129,6 +133,7 @@ int main (int argc, char * argv[])
        {
           printf("Filename is %s\n", sender_packet.filename);
           sender_packet.valid = 1;
+          delete_file(remote, remote_length, sockfd);
        }
        else if (sender_packet.command == "ls")
        {
@@ -150,6 +155,45 @@ int main (int argc, char * argv[])
 }
 
 
+void delete_file(struct sockaddr_in remote, int remote_length, int sockfd)
+{
+   if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
+   {
+       perror("talker:sendto");
+          // continue;
+   }
+
+}
+
+void get_file(struct sockaddr_in remote, int remote_length, int sockfd)
+{
+   char command[] = "End of File";
+   int fd;
+   fd = open( "testfoo3", O_RDWR|O_CREAT , 0666);
+
+   if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
+   {
+       perror("talker:sendto");
+          // continue;
+   }
+   while(1)
+   {
+      recvfrom(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, &remote_length);
+      if(strcmp(receiver_packet.data, command) == 0)
+          break;
+      if(sendto(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, remote_length) == -1)
+      {    perror("listener:sendto"); 
+      }
+      printf("Number of bytes to write %d\n", receiver_packet.datasize);
+      write(fd, receiver_packet.data, receiver_packet.datasize);
+      bzero(receiver_packet.data, sizeof(receiver_packet.data));
+      
+   }
+      printf("Received file\n");
+      
+
+
+}
 void put_file(struct sockaddr_in remote, int remote_length, int sockfd)
 {
     int fd, nbytes;
@@ -174,7 +218,7 @@ void put_file(struct sockaddr_in remote, int remote_length, int sockfd)
 //      strcpy(sender_packet.data , buffer);
       sender_packet.time = time(&send_time);
       sender_packet.datasize = nbytes;
-      if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1); //send the packet
+      if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
       {
 
            perror("talker:sendto");
@@ -199,7 +243,8 @@ void put_file(struct sockaddr_in remote, int remote_length, int sockfd)
         strcpy(sender_packet.data, command);
 
         sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length);
-
+        bzero(sender_packet.data, sizeof(sender_packet));
+        bzero(receiver_packet.data, sizeof(receiver_packet));
 	// Blocks till bytes are received
 	/*struct sockaddr_in from_addr;
 	int addr_length = sizeof(struct sockaddr);

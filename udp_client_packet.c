@@ -19,6 +19,10 @@
 
 void put_file(struct sockaddr_in remote, int remote_length, int sockfd);
 void get_file(struct sockaddr_in remote, int remote_length, int sockfd);
+void delete_file(struct sockaddr_in remote, int remote_length, int sockfd);
+void get_list_of_files(struct sockaddr_in remote, int remote_length, int sockfd);
+
+
 
 
 /* You will have to modify the program below */
@@ -51,6 +55,7 @@ int main (int argc, char * argv[])
 
 	//int nbytes;                             // number of bytes send by sendto()
 	int sockfd;                               //this will be our socket
+        fd_set readset;
 	int remote_length;
 	char user_command[50];
 	struct sockaddr_in remote;              //"Internet socket address structure"
@@ -113,7 +118,6 @@ int main (int argc, char * argv[])
        }
       
        printf("Command: %s\n", sender_packet.command);
-       printf("before put");
 
        if (strcmp(sender_packet.command , "get") == 0)
        {
@@ -129,32 +133,63 @@ int main (int argc, char * argv[])
           sender_packet.valid = 1;
           put_file(remote, remote_length, sockfd);
        }
-       else if (sender_packet.command == "delete")
+       else if (strcmp(sender_packet.command, "delete") == 0)
        {
           printf("Filename is %s\n", sender_packet.filename);
           sender_packet.valid = 1;
           delete_file(remote, remote_length, sockfd);
        }
-       else if (sender_packet.command == "ls")
+       else if (strcmp(sender_packet.command , "ls") == 0)
        {
            sender_packet.valid = 1;
+           get_list_of_files(remote, remote_length, sockfd);
        }
-       else if (sender_packet.command == "exit")
+       else if (strcmp(sender_packet.command , "exit") == 0)
        {
            sender_packet.valid = 1;
+           if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
+           {
+               perror("talker:sendto");
+           }
+           printf("Server exited gracefully");
+
        }
        else
        {
           sender_packet.valid = 0;
+          if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
+          {
+              perror("talker:sendto");
+          }
+          recvfrom(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, &remote_length);
+          printf("%s\n",receiver_packet.data);
+          
        }
-       exit(-1);
+
    }
        
 	close(sockfd);
 
 }
 
+void get_list_of_files(struct sockaddr_in remote, int remote_length, int sockfd)
+{
+   char *token;
+   if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
+   {
+       perror("talker:sendto");
+          // continue;
+   }
+   recvfrom(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, &remote_length);
+   token = strtok(receiver_packet.data, "#");
+   while (token != NULL)
+   {
+       printf("%s\n", token);
+       token = strtok(NULL, "#");
+   }
+   printf("Number of files is %d\n", receiver_packet.datasize);
 
+}
 void delete_file(struct sockaddr_in remote, int remote_length, int sockfd)
 {
    if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
@@ -162,6 +197,7 @@ void delete_file(struct sockaddr_in remote, int remote_length, int sockfd)
        perror("talker:sendto");
           // continue;
    }
+   printf("Delete command sent\n");
 
 }
 

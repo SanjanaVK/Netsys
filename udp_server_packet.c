@@ -20,7 +20,6 @@
 
 struct packet_t{
     int sequence_number;
-    double time;
     unsigned int datasize;
     char data[MAXBUFSIZE];
     char command[50];
@@ -34,13 +33,14 @@ int main (int argc, char * argv[] )
 
 
 	int sockfd ,fd;                           //This will be our socket
+        fd_set readset;
 	struct sockaddr_in sin, remote;     //"Internet socket address structure"
 	unsigned int remote_length;         //length of the sockaddr_in structure
 	int nbytes;                        //number of bytes we receive in our message
 	char buffer[MAXBUFSIZE];             //a buffer to store our received message
-        time_t send_time, receive_time;
-        
-	if (argc != 2)
+       
+              
+ 	if (argc != 2)
 	{
 		printf ("USAGE:  <port>\n");
 		exit(1);
@@ -87,32 +87,40 @@ int main (int argc, char * argv[] )
 //	printf("socket\n");
 	while(1)
         {
+          printf("\nServer Listening.... Waiting for a command.......\n");
           
           if(recvfrom(sockfd, &receive_packet, sizeof(receive_packet),0,  (struct sockaddr *)&remote, &remote_length) <= 0)
           {
               perror("listener:");
               exit(-1);
            }
-          printf("Received packet\n");
+          printf("Received command: %s\n",receive_packet.command);
                       
       //       printf("%s", receive_packet.data);
           if(strcmp(receive_packet.command, "put") == 0)
           {
-              fd = open( "testfoo3", O_RDWR|O_CREAT , 0666);
+              unsigned int expected_sequence_number = 1;
+              fd = open( "foo_serverend", O_RDWR|O_CREAT|O_TRUNC , 0666);
               while(1)
               {
                   if (!(strcmp(receive_packet.data, command)))
-                      break;
+                  break;
             //printf("received packet\n");
            //if (receive_packet.sequence_number == 1)
            //{
              /*printf("Obtained first packet\n");
-             sender_packet.time= time(&receive_time);
+             
              sender_packet.sequence_number == 1;
              strcpy(sender_packet.data, receive_packet.data);*/
                   sendto(sockfd, &receive_packet, sizeof(receive_packet), 0, (struct sockaddr *)&remote, remote_length); //send the packet
+                  if (receive_packet.sequence_number != expected_sequence_number)
+                         printf("This packet is not the expected packet. Expected->%d Received->%d\n",expected_sequence_number, receive_packet.sequence_number);
+                  else
+                  {
                   printf("Number of bytes to write %d\n", receive_packet.datasize);
                   write(fd, receive_packet.data, receive_packet.datasize);
+                  expected_sequence_number++;
+                  }
                   bzero(receive_packet.data, sizeof(receive_packet.data));
                   if(recvfrom(sockfd, &receive_packet, sizeof(receive_packet),0,  (struct sockaddr *)&remote, &remote_length) <= 0)
                   {
@@ -124,11 +132,11 @@ int main (int argc, char * argv[] )
               
           }
            
-          if(strcmp(receive_packet.command, "get") == 0)
+          else if(strcmp(receive_packet.command, "get") == 0)
           {
                int fd, nbytes;
-               time_t send_time, receive_time;
                char buffer[MAXBUFSIZE];
+               int result = 0;
                fd = open(receive_packet.filename , O_RDONLY); //file open with read only option
                if(fd == -1)
                {
@@ -146,8 +154,9 @@ int main (int argc, char * argv[] )
                {
                    sender_packet.sequence_number = seq_number_count; // pack all the required data into one packet
                     //      strcpy(sender_packet.data , buffer) ;
-                   sender_packet.time = time(&send_time);
                    sender_packet.datasize = nbytes;
+                do
+                {
                    if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
                    {
 
@@ -157,17 +166,34 @@ int main (int argc, char * argv[] )
                    printf("Sent packet to the client with datasize %d\n",sender_packet.datasize);
                    bzero(sender_packet.data, nbytes);
                    bzero(buffer, nbytes);
+                  FD_ZERO(&readset);
+                  FD_SET(sockfd, &readset);
+                  struct timeval timeout = {0,1000};
+                  result = select(sockfd+1, &readset, NULL, NULL, &timeout);
+                  if( result == -1)
+                  {
+                      printf("Error in select, try again");
+                      exit(-1);
+                  }
+                  else if( result == 0)
+                  {
+                      printf("Time out, Sending the packet with sequence number %d again\n",sender_packet.sequence_number);
+                  }
+                }while (result == 0);
+      
+                if (result > 0 && FD_ISSET(sockfd, &readset))
+                {
+ 
 
                    recvfrom(sockfd, &receive_packet, sizeof(receive_packet), 0, (struct sockaddr *)&remote, &remote_length);
-                   printf("sequence number is %d\n", receive_packet.sequence_number);
-                   time(&receive_time);
+                   printf("sequence number received is %d\n", receive_packet.sequence_number);
                    if(receive_packet.sequence_number == seq_number_count)
                    {
-                       printf(" %d Packet Ack Obtained",seq_number_count);
-                       printf(" RTT is %f\n", difftime(receive_time, send_time));
+                       printf(" Ack received for %d packet\n",seq_number_count);
+                       seq_number_count++;
                    }
 
-                   seq_number_count++;
+                }
                } 
               
                strcpy(sender_packet.data, command);
@@ -186,7 +212,7 @@ int main (int argc, char * argv[] )
 	        printf("Server says %s\n", buffer);*/
           }
   
-          if(strcmp(receive_packet.command, "delete") == 0)
+          else if(strcmp(receive_packet.command, "delete") == 0)
           {
               if(remove(receive_packet.filename) ==  0)
                    printf("Delele successful of file %s\n", receive_packet.filename);
@@ -194,7 +220,7 @@ int main (int argc, char * argv[] )
                    printf("Error: Delete Unsuccesful\n");
               
           }
-          if(strcmp(receive_packet.command, "ls") == 0)
+          else if(strcmp(receive_packet.command, "ls") == 0)
           {
              DIR *d;
              struct dirent *dir;
@@ -219,20 +245,24 @@ int main (int argc, char * argv[] )
              }
              sender_packet.datasize = file_count;
              closedir(d);
-             printf("Filesize is %d, Datazise is %d\n", file_count, sender_packet.datasize);
+             printf("Number files in server directory is %d\n", file_count);
              if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1)
                  perror("sendto:");
              
           }
 
-          if(strcmp(receive_packet.command, "exit") == 0)
+          else if(strcmp(receive_packet.command, "exit") == 0)
           {
+             printf("Server is exiting\n");
+             strcpy(sender_packet.command, "exit");
+             if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1)
+                 perror("sendto:");
              exit(1);
           }
 
-          if(receive_packet.valid == 0)
+          else if(receive_packet.valid == 0)
           {
-               strcpy(sender_packet.data, "Server says Please enter a valid command\n");
+               strcpy(sender_packet.data, "Server says, Please enter a valid command\n");
                if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1)
                  perror("sendto:");
           }

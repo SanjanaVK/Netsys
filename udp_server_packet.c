@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <string.h>
+#include <dirent.h>
+
 /* You will have to modify the program below */
 
 #define MAXBUFSIZE 5*1024
@@ -119,7 +121,7 @@ int main (int argc, char * argv[] )
                   }
               }
               printf("Received file\n");
-              exit(-1);
+              
           }
            
           if(strcmp(receive_packet.command, "get") == 0)
@@ -173,7 +175,7 @@ int main (int argc, char * argv[] )
                sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length);
                bzero(sender_packet.data, sizeof(sender_packet));
                bzero(receive_packet.data, sizeof(receive_packet));
-               exit(-1);
+               
         	// Blocks till bytes are received
 	       /*struct sockaddr_in from_addr;
 	        int addr_length = sizeof(struct sockaddr);
@@ -183,6 +185,59 @@ int main (int argc, char * argv[] )
 
 	        printf("Server says %s\n", buffer);*/
           }
+  
+          if(strcmp(receive_packet.command, "delete") == 0)
+          {
+              if(remove(receive_packet.filename) ==  0)
+                   printf("Delele successful of file %s\n", receive_packet.filename);
+              else
+                   printf("Error: Delete Unsuccesful\n");
+              
+          }
+          if(strcmp(receive_packet.command, "ls") == 0)
+          {
+             DIR *d;
+             struct dirent *dir;
+             int file_count  = 0;
+             d = opendir(".");
+             bzero(sender_packet.data, sizeof(sender_packet));
+
+             if(d)
+             {
+                 if( (dir = readdir(d)) != NULL)
+                     strcpy(sender_packet.data,dir->d_name);
+                     file_count++;
+                 while( (dir =readdir(d)) != NULL)
+                 {
+                      printf("%s\n", dir->d_name);
+                      strcat(sender_packet.data, "#");
+                      strcat(sender_packet.data,dir->d_name);
+                      file_count++;
+                      
+                      
+                 }
+             }
+             sender_packet.datasize = file_count;
+             closedir(d);
+             printf("Filesize is %d, Datazise is %d\n", file_count, sender_packet.datasize);
+             if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1)
+                 perror("sendto:");
+             
+          }
+
+          if(strcmp(receive_packet.command, "exit") == 0)
+          {
+             exit(1);
+          }
+
+          if(receive_packet.valid == 0)
+          {
+               strcpy(sender_packet.data, "Server says Please enter a valid command\n");
+               if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1)
+                 perror("sendto:");
+          }
+       
+             
 }
         
 

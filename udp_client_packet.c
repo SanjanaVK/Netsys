@@ -17,7 +17,7 @@
 
 #define MAXBUFSIZE 5*1024
 
-void put_file(struct sockaddr_in remote, int remote_length, int sockfd);
+void put_file(struct sockaddr_in remote, int remote_length, int sockfd, fd_set readset);
 void get_file(struct sockaddr_in remote, int remote_length, int sockfd);
 void delete_file(struct sockaddr_in remote, int remote_length, int sockfd);
 void get_list_of_files(struct sockaddr_in remote, int remote_length, int sockfd);
@@ -29,7 +29,6 @@ void get_list_of_files(struct sockaddr_in remote, int remote_length, int sockfd)
 
 struct packet_t{
     int sequence_number;
-    double time;
     unsigned int datasize;
     char data[MAXBUFSIZE];
     char command[50];
@@ -41,7 +40,7 @@ struct packet_t sender_packet, receiver_packet;
 
 void display_menu()
 {
-   printf("================================================Command Menu=====================================================================================\n");
+   printf("\n================================================Command Menu=====================================================================================\n");
    printf("\"get [file_name]\"       : The server transmits the requested file to the client \n");
    printf("\"put [file_name]\"       : The server receives transmitted file from the server and stores it locally \n");
    printf("\"delete [file_name]\"    : The server deletes the file if exists otherwise does nothing \n");
@@ -61,6 +60,7 @@ int main (int argc, char * argv[])
 	struct sockaddr_in remote;              //"Internet socket address structure"
        // int fd;
         char *transfer_file;
+        unsigned int server_exit_flag = 0;
         
 	if (argc < 3)
 	{
@@ -100,16 +100,17 @@ int main (int argc, char * argv[])
     char *token;
     while(1)
     {
-
+        
        display_menu();
-       printf("\n Please enter a valid command\n");
+       printf("\n Please enter a valid command from the command menu\n");
+       if(server_exit_flag == 1)
+           printf("Note: Server has been exited. The command wont be succesful unless both client and server are restarted again\n");
        gets(user_input);
-       printf("User input is %s\n", user_input);
+       printf("Command entered: %s\n", user_input);
        token = strtok(user_input, " [ ]");
        strcpy(sender_packet.command, token);
        while (token != NULL)
        {
-           printf("%s\n", token);
            token = strtok(NULL, " [ ]");
            if(token != NULL)
            {
@@ -117,25 +118,22 @@ int main (int argc, char * argv[])
            }
        }
       
-       printf("Command: %s\n", sender_packet.command);
-
        if (strcmp(sender_packet.command , "get") == 0)
        {
-           printf("Filename is %s\n", sender_packet.filename);
+           printf("Obtaining file %s from the server\n", sender_packet.filename);
            sender_packet.valid = 1;
            get_file(remote, remote_length, sockfd);
 
        }
        else if (strcmp(sender_packet.command , "put") == 0)
        {
-          printf(" In put\n");
-          printf("Filename is %s\n", sender_packet.filename);
+          printf("Sending file %s to the server\n", sender_packet.filename);
           sender_packet.valid = 1;
-          put_file(remote, remote_length, sockfd);
+          put_file(remote, remote_length, sockfd, readset);
        }
        else if (strcmp(sender_packet.command, "delete") == 0)
        {
-          printf("Filename is %s\n", sender_packet.filename);
+          printf("Deleting File %s from the server directory\n", sender_packet.filename);
           sender_packet.valid = 1;
           delete_file(remote, remote_length, sockfd);
        }
@@ -151,8 +149,12 @@ int main (int argc, char * argv[])
            {
                perror("talker:sendto");
            }
-           printf("Server exited gracefully");
-
+           recvfrom(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, &remote_length);
+           if(!(strcmp(receiver_packet.command ,"exit")))
+           {
+               server_exit_flag = 1;
+               printf("Server exited gracefully\n");
+           }
        }
        else
        {
@@ -197,16 +199,15 @@ void delete_file(struct sockaddr_in remote, int remote_length, int sockfd)
        perror("talker:sendto");
           // continue;
    }
-   printf("Delete command sent\n");
-
 }
 
 void get_file(struct sockaddr_in remote, int remote_length, int sockfd)
 {
    char command[] = "End of File";
    int fd;
-   fd = open( "testfoo3", O_RDWR|O_CREAT , 0666);
-
+   fd = open( "foo_clientend", O_RDWR|O_CREAT|O_TRUNC , 0666);
+   
+   int expected_sequence_number = 1;
    if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
    {
        perror("talker:sendto");
@@ -220,8 +221,14 @@ void get_file(struct sockaddr_in remote, int remote_length, int sockfd)
       if(sendto(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, remote_length) == -1)
       {    perror("listener:sendto"); 
       }
-      printf("Number of bytes to write %d\n", receiver_packet.datasize);
-      write(fd, receiver_packet.data, receiver_packet.datasize);
+      if (receiver_packet.sequence_number != expected_sequence_number)
+          printf("This packet is not the expected packet. Expected packet: %d, Received packet:%d\n", expected_sequence_number, receiver_packet.sequence_number);
+      else
+      {
+          printf("Number of bytes to write %d\n", receiver_packet.datasize);
+          write(fd, receiver_packet.data, receiver_packet.datasize);
+          expected_sequence_number++;
+      }
       bzero(receiver_packet.data, sizeof(receiver_packet.data));
       
    }
@@ -230,10 +237,10 @@ void get_file(struct sockaddr_in remote, int remote_length, int sockfd)
 
 
 }
-void put_file(struct sockaddr_in remote, int remote_length, int sockfd)
+void put_file(struct sockaddr_in remote, int remote_length, int sockfd, fd_set readset)
 {
     int fd, nbytes;
-    time_t send_time, receive_time;
+    int result = 0;
     char buffer[MAXBUFSIZE];
     fd = open(sender_packet.filename , O_RDONLY); //file open with read only option
     if(fd == -1)
@@ -252,28 +259,46 @@ void put_file(struct sockaddr_in remote, int remote_length, int sockfd)
   {
       sender_packet.sequence_number = seq_number_count; // pack all the required data into one packet
 //      strcpy(sender_packet.data , buffer);
-      sender_packet.time = time(&send_time);
       sender_packet.datasize = nbytes;
-      if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
+      
+      do
       {
+         if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
+         {
 
            perror("talker:sendto");
           // continue;
-      }
-      printf("Sent packet to the server with datasize %d\n",sender_packet.datasize);
-      bzero(sender_packet.data, nbytes);
-      bzero(buffer, nbytes);
-
+         }
+          printf("Sent packet to the server with datasize %d\n",sender_packet.datasize);
+          bzero(sender_packet.data, nbytes);
+          bzero(buffer, nbytes);
+         FD_ZERO(&readset);
+         FD_SET(sockfd, &readset);
+         struct timeval timeout = {0,1000};
+         result = select(sockfd+1, &readset, NULL, NULL, &timeout);
+         if( result == -1)
+         {
+             printf("Error in select, try again");
+             exit(-1);
+         }
+         else if( result == 0)
+         {
+           printf("Time out, Sending the packet with sequence number %d again\n",sender_packet.sequence_number);
+         }
+      }while (result == 0);
+      
+      if (result > 0 && FD_ISSET(sockfd, &readset))
+      {
       recvfrom(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, &remote_length);
-      printf("sequence number is %d\n", receiver_packet.sequence_number);
-      time(&receive_time);
+      printf("sequence number of the received packet is %d\n", receiver_packet.sequence_number);
       if(receiver_packet.sequence_number == seq_number_count)
       {
-         printf(" %d Packet Ack Obtained",seq_number_count);
-         printf(" RTT is %f\n", difftime(receive_time, send_time));
+         printf(" Ack received for %d Packet\n",seq_number_count);
+         seq_number_count++;
       }
 
-      seq_number_count++;
+      }
+      
 } 
               
         strcpy(sender_packet.data, command);

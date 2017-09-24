@@ -49,6 +49,16 @@ void display_menu()
    printf("\"exit\"                  : The server exits gracefully \n");
 }
 
+char * encryptdecrypt(char * message, int length)
+{
+    int i;
+    char key = 'S';
+    for(i=0; i < length; i++)
+    {
+        message[i] ^= key;
+    }
+    return message;
+}
 
 int main (int argc, char * argv[])
 {
@@ -262,8 +272,9 @@ void get_file(struct sockaddr_in remote, int remote_length, int sockfd)
         /*If sequence number matches then write to file*/
         else
         {
-            printf("Sequence number of the packet received: %d. Number of bytes to write %d\n", receiver_packet.sequence_number, receiver_packet.datasize);
-            write(fd, receiver_packet.data, receiver_packet.datasize);
+            printf("Sequence number of the packet received: %d. Number of bytes to decrypt and write: %d\n", receiver_packet.sequence_number, receiver_packet.datasize);
+            char * decrypted = encryptdecrypt(receiver_packet.data, receiver_packet.datasize); //decrypt file packet
+            write(fd, decrypted, receiver_packet.datasize);
             expected_sequence_number++;
         }
             bzero(receiver_packet.data, sizeof(receiver_packet.data)); //clear buffer
@@ -299,6 +310,9 @@ int put_file(struct sockaddr_in remote, int remote_length, int sockfd, fd_set re
         sender_packet.sequence_number = seq_number_count; // pack all the required data into one packet
         sender_packet.datasize = nbytes; //datasize = bytes read
         int resent_number =0;
+        char * encrypted = encryptdecrypt(sender_packet.data, nbytes); //encrypt file data packet
+        memcpy(sender_packet.data, encrypted, nbytes);
+       
         do
         {
             if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
@@ -306,12 +320,12 @@ int put_file(struct sockaddr_in remote, int remote_length, int sockfd, fd_set re
                 perror("talker:sendto");
             }
             resent_number++; //Count of number of times same packet is resent
-            printf("Sent packet to the server with sequence number %d and datasize %d\n",sender_packet.sequence_number,sender_packet.datasize);
+            printf("Sent encrypted packet to the server with sequence number %d and datasize %d\n",sender_packet.sequence_number,sender_packet.datasize);
             bzero(sender_packet.data, nbytes);
             bzero(buffer, nbytes);
             FD_ZERO(&readset);
             FD_SET(sockfd, &readset); //set active socket to fd_set
-            struct timeval timeout = {0,100000}; //SEnt timeout to 100ms
+            struct timeval timeout = {0,100000}; //Sent timeout to 100ms
             result = select(sockfd+1, &readset, NULL, NULL, &timeout);
             if( result == -1)
             {

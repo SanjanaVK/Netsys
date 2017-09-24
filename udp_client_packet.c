@@ -232,7 +232,10 @@ void get_file(struct sockaddr_in remote, int remote_length, int sockfd)
       bzero(receiver_packet.data, sizeof(receiver_packet.data));
       
    }
-      printf("Received file\n");
+      if(receiver_packet.sequence_number == (expected_sequence_number - 1))
+      {
+          printf("Received file %s\n", sender_packet.filename);
+      }
       
 
 
@@ -336,6 +339,8 @@ void put_file(struct sockaddr_in remote, int remote_length, int sockfd, fd_set r
            printf("Not able to transfer this file, please try again later\n");
            break;
       }
+      else
+          printf("Sent file successfully\n");
       
     } 
               

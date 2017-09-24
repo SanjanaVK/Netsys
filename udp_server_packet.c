@@ -80,7 +80,7 @@ int main (int argc, char * argv[] )
 
 	remote_length = sizeof(remote);
         
-        char command[] = "End of File";
+        char command[] = "#End#of#File#";
 
 	//waits for an incoming message
 	bzero(buffer,sizeof(buffer));
@@ -117,7 +117,7 @@ int main (int argc, char * argv[] )
                          printf("This packet is not the expected packet. Expected->%d Received->%d\n",expected_sequence_number, receive_packet.sequence_number);
                   else
                   {
-                  printf("Number of bytes to write %d\n", receive_packet.datasize);
+                  printf("Sequence number of the packet received %d Number of bytes to write %d\n", receive_packet.sequence_number, receive_packet.datasize);
                   write(fd, receive_packet.data, receive_packet.datasize);
                   expected_sequence_number++;
                   }
@@ -143,7 +143,7 @@ int main (int argc, char * argv[] )
                    perror("File not opened: ");
                    exit(-1);
                }
-               char command[] = "End of File";
+               char command[] = "#End#of#File#";
 	       /******************
 	       sendto() sends immediately.  
 	         it will report an error if the message fails to leave the computer
@@ -168,7 +168,7 @@ int main (int argc, char * argv[] )
                    bzero(buffer, nbytes);
                   FD_ZERO(&readset);
                   FD_SET(sockfd, &readset);
-                  struct timeval timeout = {0,1000};
+                  struct timeval timeout = {0,100000};
                   result = select(sockfd+1, &readset, NULL, NULL, &timeout);
                   if( result == -1)
                   {

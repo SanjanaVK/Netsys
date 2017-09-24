@@ -17,7 +17,7 @@
 
 #define MAXBUFSIZE 5*1024
 
-void put_file(struct sockaddr_in remote, int remote_length, int sockfd, fd_set readset);
+int put_file(struct sockaddr_in remote, int remote_length, int sockfd, fd_set readset);
 void get_file(struct sockaddr_in remote, int remote_length, int sockfd);
 void delete_file(struct sockaddr_in remote, int remote_length, int sockfd);
 void get_list_of_files(struct sockaddr_in remote, int remote_length, int sockfd);
@@ -25,7 +25,7 @@ void get_list_of_files(struct sockaddr_in remote, int remote_length, int sockfd)
 
 
 
-/* You will have to modify the program below */
+/* Creating struct for packet transfer */
 
 struct packet_t{
     int sequence_number;
@@ -52,36 +52,32 @@ void display_menu()
 int main (int argc, char * argv[])
 {
 
-	//int nbytes;                             // number of bytes send by sendto()
-	int sockfd;                               //this will be our socket
-        fd_set readset;
-	int remote_length;
-	char user_command[50];
-	struct sockaddr_in remote;              //"Internet socket address structure"
-       // int fd;
-        char *transfer_file;
-        unsigned int server_exit_flag = 0;
-        
-	if (argc < 3)
-	{
-		printf("USAGE:  <server_ip> <server_port>\n");
-		exit(1);
-	}
-        
-
-        
-    // create socket in client side
-  sockfd = socket(AF_INET, SOCK_DGRAM, 0);
- 
- 
-  if(sockfd==-1)
+    int sockfd;                               //this will be our socket
+    fd_set readset;
+    int remote_length;
+    char user_command[50];
+    struct sockaddr_in remote;              //"Internet socket address structure"
+      
+    char *transfer_file;
+    unsigned int server_exit_flag = 0;
+    
+    //check for arguments: server ip address and server port number    
+    if (argc < 3)
     {
-      printf(" socket not created in client\n");
-      exit(0);
+        printf("USAGE:  <server_ip> <server_port>\n");
+        exit(1);
     }
-  else
+                
+    // create socket in client side
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if(sockfd==-1)
     {
-      printf("socket created in  client\n");
+        printf(" socket not created in client\n");
+        exit(0);
+    }
+    else
+    {
+        printf("socket created in  client\n");
     }
  
 	/******************
@@ -107,8 +103,16 @@ int main (int argc, char * argv[])
            printf("Note: Server has been exited. The command wont be succesful unless both client and server are restarted again\n");
        gets(user_input);
        printf("Command entered: %s\n", user_input);
+       strcpy(sender_packet.command , "\0");
+       strcpy(sender_packet.filename, "\0");
+       token = NULL;
        token = strtok(user_input, " [ ]");
-       strcpy(sender_packet.command, token);
+       if (token == NULL)
+       {
+           sender_packet.valid =0;
+       }
+       else
+           strcpy(sender_packet.command, token);
        while (token != NULL)
        {
            token = strtok(NULL, " [ ]");
@@ -120,6 +124,12 @@ int main (int argc, char * argv[])
       
        if (strcmp(sender_packet.command , "get") == 0)
        {
+           if(strcmp(sender_packet.filename, "\0") == 0)
+           {
+               printf("Error: Please Enter a Filename: get [<filename>]");
+               continue;
+           }
+ 
            printf("Obtaining file %s from the server\n", sender_packet.filename);
            sender_packet.valid = 1;
            get_file(remote, remote_length, sockfd);
@@ -127,23 +137,45 @@ int main (int argc, char * argv[])
        }
        else if (strcmp(sender_packet.command , "put") == 0)
        {
-          printf("Sending file %s to the server\n", sender_packet.filename);
+           if(strcmp(sender_packet.filename, "\0") == 0)
+           {
+               printf("Error: Please Enter a Filename: put [<filename>]");
+               continue;
+           }
+ 
+          printf("Sending file %s to the server.....\n", sender_packet.filename);
           sender_packet.valid = 1;
-          put_file(remote, remote_length, sockfd, readset);
+          if(put_file(remote, remote_length, sockfd, readset) == -1)
+              continue;
        }
        else if (strcmp(sender_packet.command, "delete") == 0)
        {
+           if(strcmp(sender_packet.filename, "\0") == 0)
+           {
+               printf("Error: Please Enter a Filename: delete [<filename>]");
+               continue;
+           }
           printf("Deleting File %s from the server directory\n", sender_packet.filename);
           sender_packet.valid = 1;
           delete_file(remote, remote_length, sockfd);
        }
        else if (strcmp(sender_packet.command , "ls") == 0)
        {
+           if(strcmp(sender_packet.filename, "\0") != 0)
+           {
+               printf("Did you mean <ls>?, try again\n");
+               continue;
+           }
            sender_packet.valid = 1;
            get_list_of_files(remote, remote_length, sockfd);
        }
        else if (strcmp(sender_packet.command , "exit") == 0)
        {
+          if(strcmp(sender_packet.filename, "\0") != 0)
+           {
+               printf("Did you mean <exit>?, try again\n");
+               continue;
+           } 
            sender_packet.valid = 1;
            if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
            {
@@ -214,33 +246,32 @@ void get_file(struct sockaddr_in remote, int remote_length, int sockfd)
           // continue;
    }
    while(1)
-   {
-      recvfrom(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, &remote_length);
-      if(strcmp(receiver_packet.data, command) == 0)
-          break;
-      if(sendto(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, remote_length) == -1)
-      {    perror("listener:sendto"); 
-      }
-      if (receiver_packet.sequence_number != expected_sequence_number)
-          printf("This packet is not the expected packet. Expected packet: %d, Received packet:%d\n", expected_sequence_number, receiver_packet.sequence_number);
-      else
-      {
-          printf("Sequence number of the packet received: %d. Number of bytes to write %d\n", receiver_packet.sequence_number, receiver_packet.datasize);
-          write(fd, receiver_packet.data, receiver_packet.datasize);
-          expected_sequence_number++;
-      }
-      bzero(receiver_packet.data, sizeof(receiver_packet.data));
-      
-   }
-      if(receiver_packet.sequence_number == (expected_sequence_number - 1))
+   {       
+            
+       recvfrom(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, &remote_length);
+            if(strcmp(receiver_packet.data, command) == 0)
+                break;
+            if(sendto(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, remote_length) == -1)
+            {    
+                 perror("listener:sendto"); 
+            }
+            if (receiver_packet.sequence_number != expected_sequence_number)
+                printf("This packet is not the expected packet. Expected packet: %d, Received packet:%d\n", expected_sequence_number, receiver_packet.sequence_number);
+            else
+            {
+                 printf("Sequence number of the packet received: %d. Number of bytes to write %d\n", receiver_packet.sequence_number, receiver_packet.datasize);
+                 write(fd, receiver_packet.data, receiver_packet.datasize);
+                 expected_sequence_number++;
+            }
+            bzero(receiver_packet.data, sizeof(receiver_packet.data));
+       }
+     
+       if(receiver_packet.sequence_number == (expected_sequence_number - 1))
       {
           printf("Received file %s\n", sender_packet.filename);
-      }
-      
-
-
+      }    
 }
-void put_file(struct sockaddr_in remote, int remote_length, int sockfd, fd_set readset)
+int put_file(struct sockaddr_in remote, int remote_length, int sockfd, fd_set readset)
 {
     int fd, nbytes;
     int result = 0;
@@ -249,7 +280,7 @@ void put_file(struct sockaddr_in remote, int remote_length, int sockfd, fd_set r
     if(fd == -1)
     {
         perror("File not opened: ");
-        exit(-1);
+        return -1;
     }
     char command[] = "#End#of#File#";
 	/******************

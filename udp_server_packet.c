@@ -128,7 +128,10 @@ int main (int argc, char * argv[] )
                       exit(-1);
                   }
               }
-              printf("Received file\n");
+              if (receive_packet.sequence_number == (expected_sequence_number - 1))
+              {
+                  printf("Received file %s\n", receive_packet.filename);
+              }
               
           }
            
@@ -224,6 +227,8 @@ int main (int argc, char * argv[] )
                   printf("Not able to transfer this file, please try again later\n");
                   break;
               }
+             else
+                 printf("Sent file succesfully\n");
            }
       
               

@@ -33,6 +33,19 @@ struct packet_t{
 };
 struct packet_t sender_packet, receive_packet;
 
+char * encryptdecrypt(char * message, int length)
+{
+    int i;
+    char key = 'S';
+    
+    for(i=0; i < length; i++)
+    {
+        message[i] ^= key;
+ 
+    }
+    return message;
+}
+
 int main (int argc, char * argv[] )
 {
     int sockfd ;                          //This will be our socket
@@ -179,6 +192,7 @@ void put_file(struct sockaddr_in remote, int remote_length, int sockfd)
     while(1)
     {
         if (!(strcmp(receive_packet.data, command))) //check if file transfer is complete
+
             break;
            
         sendto(sockfd, &receive_packet, sizeof(receive_packet), 0, (struct sockaddr *)&remote, remote_length); //send the packet with ack
@@ -187,8 +201,9 @@ void put_file(struct sockaddr_in remote, int remote_length, int sockfd)
         /*If received packet is of expected sequence number then write to file*/
         else
         {
-            printf("Sequence number of the packet received %d Number of bytes to write %d\n", receive_packet.sequence_number, receive_packet.datasize);
-            write(fd, receive_packet.data, receive_packet.datasize);
+            printf("Sequence number of the packet received: %d. Number of bytes to decrypt and write to file: %d\n", receive_packet.sequence_number, receive_packet.datasize);
+            char * decrypted = encryptdecrypt(receive_packet.data, receive_packet.datasize);
+            write(fd, decrypted, receive_packet.datasize);
             expected_sequence_number++;
         }
         bzero(receive_packet.data, sizeof(receive_packet.data));
@@ -229,13 +244,16 @@ void get_file(struct sockaddr_in remote, int remote_length, int sockfd, fd_set r
         sender_packet.sequence_number = seq_number_count; // pack all the required data into one packet
         sender_packet.datasize = nbytes;
         int resent_number =0;
+        char * encrypted = encryptdecrypt(sender_packet.data, nbytes);
+        memcpy(sender_packet.data, encrypted, nbytes);
+
         do
         {
             if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet with file data
             {
                 perror("talker:sendto");
             }
-            printf("Sent packet to the client with sequence number %d and datasize %d\n", sender_packet.sequence_number, sender_packet.datasize);
+            printf("Sent encrypted packet to the client with sequence number %d and datasize %d\n", sender_packet.sequence_number, sender_packet.datasize);
             bzero(sender_packet.data, nbytes);
             bzero(buffer, nbytes);
             FD_ZERO(&readset);

@@ -225,7 +225,7 @@ void get_file(struct sockaddr_in remote, int remote_length, int sockfd)
           printf("This packet is not the expected packet. Expected packet: %d, Received packet:%d\n", expected_sequence_number, receiver_packet.sequence_number);
       else
       {
-          printf("Number of bytes to write %d\n", receiver_packet.datasize);
+          printf("Sequence number of the packet received: %d. Number of bytes to write %d\n", receiver_packet.sequence_number, receiver_packet.datasize);
           write(fd, receiver_packet.data, receiver_packet.datasize);
           expected_sequence_number++;
       }

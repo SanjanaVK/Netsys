@@ -155,6 +155,7 @@ int main (int argc, char * argv[] )
                    sender_packet.sequence_number = seq_number_count; // pack all the required data into one packet
                     //      strcpy(sender_packet.data , buffer) ;
                    sender_packet.datasize = nbytes;
+                    int resent_number =0;
                 do
                 {
                    if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send the packet
@@ -163,7 +164,7 @@ int main (int argc, char * argv[] )
                        perror("talker:sendto");
                        // continue;
                    }
-                   printf("Sent packet to the client with datasize %d\n",sender_packet.datasize);
+                   printf("Sent packet to the client with sequence number %d and datasize %d\n", sender_packet.sequence_number, sender_packet.datasize);
                    bzero(sender_packet.data, nbytes);
                    bzero(buffer, nbytes);
                   FD_ZERO(&readset);
@@ -179,22 +180,52 @@ int main (int argc, char * argv[] )
                   {
                       printf("Time out, Sending the packet with sequence number %d again\n",sender_packet.sequence_number);
                   }
-                }while (result == 0);
+                  
+                  else if (result > 0 && FD_ISSET(sockfd, &readset))
+                  {
+                      recvfrom(sockfd, &receive_packet, sizeof(receive_packet), 0, (struct sockaddr *)&remote, &remote_length);
+                      if(receive_packet.sequence_number != seq_number_count)
+                      {
+                          printf("sequence number of the received packet ack packet is %d but expected is %d , waiting for 10 ms .... \n", receive_packet.sequence_number, seq_number_count);
+                 
+                          FD_ZERO(&readset);
+                          FD_SET(sockfd, &readset);
+                          struct timeval timeout_delayed_ack = {0,10000};
+                          result = select(sockfd+1, &readset, NULL, NULL, &timeout_delayed_ack);
+                          if(result ==0)
+                          {
+                              printf("Time out after receiving false/ delayed ack, Sending packet with sequence number %d again\n", seq_number_count);
+                          }
+                          else if (result > 0 && FD_ISSET(sockfd, &readset))
+                          {
+                              recvfrom(sockfd, &receive_packet, sizeof(receive_packet), 0, (struct sockaddr *)&remote, &remote_length);
+                              if(receive_packet.sequence_number == seq_number_count)
+                              {
+                                  printf(" Ack received for %d Packet\n",seq_number_count);
+                                  seq_number_count++;
+                              }
+                              else 
+                              {
+                                  printf("sequence number of the received packet ack packet is %d but expected is %d, sending again packet %d\n", receive_packet.sequence_number, seq_number_count, seq_number_count);
+                                  result = 0;
+                              }
+                          }
+                      }
+                 
+                      else if(receive_packet.sequence_number == seq_number_count)
+                      {
+                          printf(" Ack received for %d Packet\n",seq_number_count);
+                          seq_number_count++;
+                      } 
+                  }
+              }while (result == 0 && resent_number < 6);
+              if(resent_number >=6)
+              {
+                  printf("Not able to transfer this file, please try again later\n");
+                  break;
+              }
+           }
       
-                if (result > 0 && FD_ISSET(sockfd, &readset))
-                {
- 
-
-                   recvfrom(sockfd, &receive_packet, sizeof(receive_packet), 0, (struct sockaddr *)&remote, &remote_length);
-                   printf("sequence number received is %d\n", receive_packet.sequence_number);
-                   if(receive_packet.sequence_number == seq_number_count)
-                   {
-                       printf(" Ack received for %d packet\n",seq_number_count);
-                       seq_number_count++;
-                   }
-
-                }
-               } 
               
                strcpy(sender_packet.data, command);
 

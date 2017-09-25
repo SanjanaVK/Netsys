@@ -158,33 +158,42 @@ void get_list_of_files(struct sockaddr_in remote, int remote_length, int sockfd)
     DIR *d;
     struct dirent *dir;
     int file_count  = 0;
-    d = opendir(".");
+    if ((d = opendir(".")) == NULL)
+    {
+        perror("Error: Could not open directory :");
+    }
     bzero(sender_packet.data, sizeof(sender_packet));
     if(d)
     {
         if( (dir = readdir(d)) != NULL) //read current directory
-        strcpy(sender_packet.data,dir->d_name);
-        file_count++;
-        while( (dir =readdir(d)) != NULL)
         {
-            printf("%s\n", dir->d_name);
-            //get a string of all filenames separated by "#"
-            strcat(sender_packet.data, "#");
-            strcat(sender_packet.data,dir->d_name);
+            strcpy(sender_packet.data,dir->d_name);
             file_count++;
-        }
+            while( (dir =readdir(d)) != NULL)
+            {
+                printf("%s\n", dir->d_name);
+                //get a string of all filenames separated by "#"
+                strcat(sender_packet.data, "#");
+                strcat(sender_packet.data,dir->d_name);
+                file_count++;
+            }  
+            sender_packet.datasize = file_count;
+            closedir(d);
+            printf("Number files in server directory is %d\n", file_count);
+            if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send list of files to client
+                perror("sendto:");
+        } 
+        else
+            perror("Error: Reading directory: ");
     }
-    sender_packet.datasize = file_count;
-    closedir(d);
-    printf("Number files in server directory is %d\n", file_count);
-    if(sendto(sockfd, &sender_packet, sizeof(sender_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) //send list of files to client
-        perror("sendto:");   
+         
 }
 
 /*This function puts a particular file from client to server*/
 void put_file(struct sockaddr_in remote, int remote_length, int sockfd)
 {
-    int fd;
+    int fd, result=0;
+    fd_set readset;
     unsigned int expected_sequence_number = 1;
     char command[] = "#End#of#File#";
  
@@ -192,7 +201,6 @@ void put_file(struct sockaddr_in remote, int remote_length, int sockfd)
     while(1)
     {
         if (!(strcmp(receive_packet.data, command))) //check if file transfer is complete
-
             break;
            
         sendto(sockfd, &receive_packet, sizeof(receive_packet), 0, (struct sockaddr *)&remote, remote_length); //send the packet with ack
@@ -207,10 +215,29 @@ void put_file(struct sockaddr_in remote, int remote_length, int sockfd)
             expected_sequence_number++;
         }
         bzero(receive_packet.data, sizeof(receive_packet.data));
+        FD_ZERO(&readset);
+        FD_SET(sockfd, &readset); //set active socket to fd_set
+        struct timeval timeout = {0,400000}; //Set timeout to 400ms
+        result = select(sockfd+1, &readset, NULL, NULL, &timeout);
+        if( result == -1)
+        {
+            printf("Error in select, try again");
+            exit(-1);
+        }
+        else if( result == 0)
+        {
+            printf("Time out, Not received any packet in 400ms. Please check if client is still active and try again\n"); //If server is inactive for 400ms, then it stops the transfer and waits for command
+            break;
+        }
+
+        else if (result > 0 && FD_ISSET(sockfd, &readset))
+        {
+
         if(recvfrom(sockfd, &receive_packet, sizeof(receive_packet),0,  (struct sockaddr *)&remote, &remote_length) <= 0) //receive next packet
         {
             perror("listener:");
             exit(-1);
+        }
         }
     }
     if (receive_packet.sequence_number == (expected_sequence_number - 1)) //Check if file transfer complete

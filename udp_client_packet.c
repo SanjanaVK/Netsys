@@ -249,7 +249,8 @@ void delete_file(struct sockaddr_in remote, int remote_length, int sockfd)
 void get_file(struct sockaddr_in remote, int remote_length, int sockfd)
 {
     char command[] = "#End#of#File#";
-    int fd;
+    int fd, result=0;
+    fd_set readset;
     fd = open( "foo_clientend", O_RDWR|O_CREAT|O_TRUNC , 0666);
    
     int expected_sequence_number = 1;
@@ -257,27 +258,44 @@ void get_file(struct sockaddr_in remote, int remote_length, int sockfd)
     {
         perror("talker:sendto");
     }
-   
     while(1)
-    {       
-        recvfrom(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, &remote_length); //wait from file packet
-        if(strcmp(receiver_packet.data, command) == 0) //exit if file transfer is complete
-            break;
-        if(sendto(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) // send ack
-        {    
-            perror("listener:sendto"); 
-        }
-        if (receiver_packet.sequence_number != expected_sequence_number) //check if received packet sequence number is expected sequence number
-            printf("This packet is not the expected packet. Expected packet: %d, Received packet:%d\n", expected_sequence_number, receiver_packet.sequence_number);
-        /*If sequence number matches then write to file*/
-        else
+    { 
+        FD_ZERO(&readset);
+        FD_SET(sockfd, &readset); //set active socket to fd_set
+        struct timeval timeout = {0,400000}; //Sent timeout to 100ms
+        result = select(sockfd+1, &readset, NULL, NULL, &timeout);
+        if( result == -1)
         {
-            printf("Sequence number of the packet received: %d. Number of bytes to decrypt and write: %d\n", receiver_packet.sequence_number, receiver_packet.datasize);
-            char * decrypted = encryptdecrypt(receiver_packet.data, receiver_packet.datasize); //decrypt file packet
-            write(fd, decrypted, receiver_packet.datasize);
-            expected_sequence_number++;
+            printf("Error in select, try again");
+            exit(-1);
         }
-            bzero(receiver_packet.data, sizeof(receiver_packet.data)); //clear buffer
+        else if( result == 0)
+        {
+            printf("Time out, Not received any packet in 400ms. Please check if server is still active and try again\n"); //If client is inactive for 400ms, then it stopd the transfer and goes back to display menu
+            break;
+        }
+
+        else if (result > 0 && FD_ISSET(sockfd, &readset))
+        {
+            recvfrom(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, &remote_length); //wait from file packet
+            if(strcmp(receiver_packet.data, command) == 0) //exit if file transfer is complete
+                break;
+            if(sendto(sockfd, &receiver_packet, sizeof(receiver_packet), 0, (struct sockaddr *)&remote, remote_length) == -1) // send ack
+            {    
+                perror("listener:sendto"); 
+            }
+            if (receiver_packet.sequence_number != expected_sequence_number) //check if received packet sequence number is expected sequence number
+                printf("This packet is not the expected packet. Expected packet: %d, Received packet:%d\n", expected_sequence_number, receiver_packet.sequence_number);
+            /*If sequence number matches then write to file*/
+            else
+            {
+                printf("Sequence number of the packet received: %d. Number of bytes to decrypt and write: %d\n", receiver_packet.sequence_number, receiver_packet.datasize);
+                char * decrypted = encryptdecrypt(receiver_packet.data, receiver_packet.datasize); //decrypt file packet
+                write(fd, decrypted, receiver_packet.datasize);
+                expected_sequence_number++;
+            }
+        }
+                bzero(receiver_packet.data, sizeof(receiver_packet.data)); //clear buffer
     }
     //If all packets received then display the same 
     if(receiver_packet.sequence_number == (expected_sequence_number - 1))

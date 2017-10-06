@@ -1,0 +1,38 @@
+README for Network Systems Programming Assignment #1
+
+Author: Sanjana Kalyanappagol
+Date: 24th September 2017
+Description: The program implements UDP based communication with reliability and data encryption/decryption.
+             Reliability: Stop and Wait ARQ protocol has been implemented in this program to obtain reliable file transfer between client and the server (local & remote)
+			              The sender while waiting for an ack waits for 100ms for data to be received at socket:
+						  If wrong ack received : wait for another 10 ms before deciding if to send next packet or same packet 
+						  If timeout: Send the same packet again
+						  If expected ack received: Send the next packet
+						  Note: Ack is sent by receiver for every packet received 
+						  The receiver if does not get any data for 800 ms from sender then it is timed out. Accepts new command
+						  Number of packets have been compared to check for successful transmission of the file
+						 
+			Encryption/
+			Decryption : Bitwise XOR operation is performed on each character of the string in the data packet with character 'S' for encryption and decryption
+			             
+Run the Client with the following command: make
+                                          ./udp_client.o <ip address of the server> <port_number>
+										  
+Example: ./udp_client_packet.o 128.138.201.67 5665
+		  
+Run the Server with the following command: make 
+                                           ./udp_server.o <port_number>
+Example: ./udp_server_packet.o 5665
+						 
+User Menu:
+
+“get [file_name]”       : The server transmits the requested file to the client (use files of small size in order of 5 KB for transfer like any jpeg file).
+“put [file_name]”       : The server receives the transmitted file by the client and stores it locally (use files of small size in order of 5 KB for transfer like any jpeg file).
+“delete [file_name]”    : The server delete file if it exists. Otherwise do nothing.
+“ls”                    : The server searches all the files it has in its local directory and send a list of all these files to the client.
+“exit”                  : The server should exit gracefully.
+Any other commands      : The server should simply repeat the command back to the client with no modification, stating that the given command was not understood.
+
+Note: Ctrl+C is used to exit the server
+
+Observation: Verifies for file transfer over 100 MB from local to remote. Obtains same MD5sum on both sides.
